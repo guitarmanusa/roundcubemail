@@ -982,7 +982,25 @@ class enigma_engine
 
         return $result;
     }
+    function import_cert($content, $isfile=false)
+    {
+        $this->load_smime_driver();
+        $result = $this->smime_driver->import($content, $isfile);
 
+        if ($result instanceof enigma_error) {
+            rcube::raise_error(array(
+                'code' => 600, 'type' => 'php',
+                'file' => __FILE__, 'line' => __LINE__,
+                'message' => "Enigma plugin: " . $result->getMessage()
+                ), true, false);
+        }
+        else {
+            $result['imported'] = $result['public_imported'] + $result['private_imported'];
+            $result['unchanged'] = $result['public_unchanged'] + $result['private_unchanged'];
+        }
+
+        return $result;
+    }
     /**
      * Handler for keys/certs import request action
      */

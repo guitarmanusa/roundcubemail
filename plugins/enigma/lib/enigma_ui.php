@@ -91,20 +91,55 @@ class enigma_ui
             $this->rc->output->set_pagetitle($this->enigma->gettext('enigmakeys'));
             $this->rc->output->send('enigma.keys');
         }
-/*
+
         // Preferences UI
         else if ($this->rc->action == 'plugin.enigmacerts') {
+            switch ($action) {
+                case 'delete':
+                    $this->cert_delete();
+                    break;
+/*
+                case 'edit':
+                    $this->cert_edit();
+                    break;
+*/
+                case 'import':
+                    $this->cert_import();
+                    break;
+
+                case 'export':
+                    $this->cert_export();
+                    break;
+
+                case 'generate':
+                    $this->cert_generate();
+                    break;
+
+                case 'create':
+                    $this->cert_create();
+                    break;
+
+                case 'search':
+                case 'list':
+                    $this->cert_list();
+                    break;
+
+                case 'info':
+                    $this->cert_info();
+                    break;
+            }
+
             $this->rc->output->add_handlers(array(
-                    'keyslist'     => array($this, 'tpl_certs_list'),
-                    'keyframe'     => array($this, 'tpl_cert_frame'),
-                    'countdisplay' => array($this, 'tpl_certs_rowcount'),
+                    'certlist'     => array($this, 'tpl_cert_list'),
+                    'certframe'     => array($this, 'tpl_cert_frame'),
+                    'countdisplay' => array($this, 'tpl_keys_rowcount'),
                     'searchform'   => array($this->rc->output, 'search_form'),
             ));
 
             $this->rc->output->set_pagetitle($this->enigma->gettext('enigmacerts'));
             $this->rc->output->send('enigma.certs'); 
         }
-*/
+
         // Message composing UI
         else if ($this->rc->action == 'compose') {
             $this->compose_ui();
@@ -693,6 +728,533 @@ class enigma_ui
         $this->rc->output->command('enigma_list');
         $this->rc->output->show_message('enigma.keyremovesuccess', 'confirmation');
         $this->rc->output->send();
+    }
+
+/*--------------------------------------------------------------------------------
++
++      S/MIME handlers
++
+---------------------------------------------------------------------------------*/
+
+    /**
+     * Template object for key info/edit frame.
+     *
+     * @param array Object attributes
+     *
+     * @return string HTML output
+     */
+    function tpl_cert_frame($attrib)
+    {
+        if (!$attrib['id']) {
+            $attrib['id'] = 'rcmkeysframe';
+        }
+
+        $attrib['name'] = $attrib['id'];
+
+        $this->rc->output->set_env('contentframe', $attrib['name']);
+        $this->rc->output->set_env('blankpage', $attrib['src'] ?
+            $this->rc->output->abs_url($attrib['src']) : 'program/resources/blank.gif');
+
+        return $this->rc->output->frame($attrib);
+    }
+
+    /**
+     * Template object for list of keys.
+     *
+     * @param array Object attributes
+     *
+     * @return string HTML content
+     */
+    function tpl_cert_list($attrib)
+    {
+        // add id to message list table if not specified
+        if (!strlen($attrib['id'])) {
+            $attrib['id'] = 'rcmenigmacertlist';
+        }
+
+        // define list of cols to be displayed
+        $a_show_cols = array('name');
+
+        // create XHTML table
+        $out = $this->rc->table_output($attrib, array(), $a_show_cols, 'id');
+
+        // set client env
+        $this->rc->output->add_gui_object('certlist', $attrib['id']);
+        $this->rc->output->include_script('list.js');
+
+        // add some labels to client
+        $this->rc->output->add_label('enigma.certremoveconfirm', 'enigma.certremoving');
+
+        return $out;
+    }
+
+    /**
+     * Key listing (and searching) request handler
+     */
+    private function cert_list()
+    {
+        $this->enigma->load_engine();
+
+        $pagesize = $this->rc->config->get('pagesize', 100);
+        $page     = max(intval(rcube_utils::get_input_value('_p', rcube_utils::INPUT_GPC)), 1);
+        $search   = rcube_utils::get_input_value('_q', rcube_utils::INPUT_GPC);
+
+        // Get the list
+        $list = $this->enigma->engine->list_certs($search);
+
+        if ($list && ($list instanceof enigma_error))
+            $this->rc->output->show_message('enigma.certlisterror', 'error');
+        else if (empty($list))
+            $this->rc->output->show_message('enigma.nocertsfound', 'notice');
+        else if (is_array($list)) {
+            // Save the size
+            $listsize = count($list);
+
+            // Sort the list by cert (user) name
+            usort($list, array('enigma_cert', 'cmp'));
+
+            // Slice current page
+            $list = array_slice($list, ($page - 1) * $pagesize, $pagesize);
+            $size = count($list);
+
+            // Add rows
+            foreach ($list as $key) {
+                $this->rc->output->command('enigma_add_list_row',
+                    array('name' => rcube::Q($key->name), 'id' => $key->id));
+            }
+        }
+
+        $this->rc->output->set_env('rowcount', $size);
+        $this->rc->output->set_env('search_request', $search);
+        $this->rc->output->set_env('pagecount', ceil($listsize/$pagesize));
+        $this->rc->output->set_env('current_page', $page);
+        $this->rc->output->command('set_rowcount',
+            $this->get_rowcount_text($listsize, $size, $page));
+
+        $this->rc->output->send();
+    }
+
+    /**
+     * Template object for list records counter.
+     *
+     * @param array Object attributes
+     *
+     * @return string HTML output
+     */
+    function tpl_cert_rowcount($attrib)
+    {
+        if (!$attrib['id'])
+            $attrib['id'] = 'rcmcountdisplay';
+
+        $this->rc->output->add_gui_object('countdisplay', $attrib['id']);
+
+        return html::span($attrib, $this->get_rowcount_text());
+    }
+
+    /**
+     * Returns text representation of list records counter
+     */
+/*    private function get_rowcount_text($all=0, $curr_count=0, $page=1)
+    {
+        if (!$curr_count) {
+            $out = $this->enigma->gettext('nokeysfound');
+        }
+        else {
+            $pagesize = $this->rc->config->get('pagesize', 100);
+            $first    = ($page - 1) * $pagesize;
+
+            $out = $this->enigma->gettext(array(
+                'name' => 'keysfromto',
+                'vars' => array(
+                    'from'  => $first + 1,
+                    'to'    => $first + $curr_count,
+                    'count' => $all)
+            ));
+        }
+
+        return $out;
+    }
+*/
+
+    /**
+     * Key information page handler
+     */
+    private function cert_info()
+    {
+        $this->enigma->load_engine();
+
+        $id  = rcube_utils::get_input_value('_id', rcube_utils::INPUT_GET);
+        $res = $this->enigma->engine->get_key($id);
+
+        if ($res instanceof enigma_key) {
+            $this->data = $res;
+        }
+        else { // error
+            $this->rc->output->show_message('enigma.keyopenerror', 'error');
+            $this->rc->output->command('parent.enigma_loadframe');
+            $this->rc->output->send('iframe');
+        }
+
+        $this->rc->output->add_handlers(array(
+            'keyname' => array($this, 'tpl_key_name'),
+            'keydata' => array($this, 'tpl_key_data'),
+        ));
+
+        $this->rc->output->set_pagetitle($this->enigma->gettext('keyinfo'));
+        $this->rc->output->send('enigma.keyinfo');
+    }
+
+    /**
+     * Template object for key name
+     */
+    function tpl_cert_name($attrib)
+    {
+        return rcube::Q($this->data->name);
+    }
+
+    /**
+     * Template object for key information page content
+     */
+    function tpl_cert_data($attrib)
+    {
+        $out   = '';
+        $table = new html_table(array('cols' => 2));
+
+        // Key user ID
+        $table->add('title', $this->enigma->gettext('keyuserid'));
+        $table->add(null, rcube::Q($this->data->name));
+
+        // Key ID
+        $table->add('title', $this->enigma->gettext('keyid'));
+        $table->add(null, $this->data->subkeys[0]->get_short_id());
+
+        // Key type
+        $keytype = $this->data->get_type();
+        if ($keytype == enigma_key::TYPE_KEYPAIR) {
+            $type = $this->enigma->gettext('typekeypair');
+        }
+        else if ($keytype == enigma_key::TYPE_PUBLIC) {
+            $type = $this->enigma->gettext('typepublickey');
+        }
+        $table->add('title', $this->enigma->gettext('keytype'));
+        $table->add(null, $type);
+
+        // Key fingerprint
+        $table->add('title', $this->enigma->gettext('fingerprint'));
+        $table->add(null, $this->data->subkeys[0]->get_fingerprint());
+
+        $out .= html::tag('fieldset', null,
+            html::tag('legend', null,
+                $this->enigma->gettext('basicinfo')) . $table->show($attrib));
+
+        // Subkeys
+        $table = new html_table(array('cols' => 5, 'id' => 'enigmasubkeytable', 'class' => 'records-table'));
+
+        $table->add_header('id', $this->enigma->gettext('subkeyid'));
+        $table->add_header('algo', $this->enigma->gettext('subkeyalgo'));
+        $table->add_header('created', $this->enigma->gettext('subkeycreated'));
+        $table->add_header('expires', $this->enigma->gettext('subkeyexpires'));
+        $table->add_header('usage', $this->enigma->gettext('subkeyusage'));
+
+        $now         = time();
+        $date_format = $this->rc->config->get('date_format', 'Y-m-d');
+        $usage_map   = array(
+            enigma_key::CAN_ENCRYPT      => $this->enigma->gettext('typeencrypt'),
+            enigma_key::CAN_SIGN         => $this->enigma->gettext('typesign'),
+            enigma_key::CAN_CERTIFY      => $this->enigma->gettext('typecert'),
+            enigma_key::CAN_AUTHENTICATE => $this->enigma->gettext('typeauth'),
+        );
+
+        foreach ($this->data->subkeys as $subkey) {
+            $algo = $subkey->get_algorithm();
+            if ($algo && $subkey->length) {
+                $algo .= ' (' . $subkey->length . ')';
+            }
+
+            $usage = array();
+            foreach ($usage_map as $key => $text) {
+                if ($subkey->usage & $key) {
+                    $usage[] = $text;
+                }
+            }
+
+            $table->add('id', $subkey->get_short_id());
+            $table->add('algo', $algo);
+            $table->add('created', $subkey->created ? $this->rc->format_date($subkey->created, $date_format, false) : '');
+            $table->add('expires', $subkey->expires ? $this->rc->format_date($subkey->expires, $date_format, false) : $this->enigma->gettext('expiresnever'));
+            $table->add('usage', implode(',', $usage));
+            $table->set_row_attribs($subkey->revoked || ($subkey->expires && $subkey->expires < $now) ? 'deleted' : '');
+        }
+
+        $out .= html::tag('fieldset', null,
+            html::tag('legend', null,
+                $this->enigma->gettext('subkeys')) . $table->show());
+
+        // Additional user IDs
+        $table = new html_table(array('cols' => 2, 'id' => 'enigmausertable', 'class' => 'records-table'));
+
+        $table->add_header('id', $this->enigma->gettext('userid'));
+        $table->add_header('valid', $this->enigma->gettext('uservalid'));
+
+        foreach ($this->data->users as $user) {
+            $username = $user->name;
+            if ($user->comment) {
+                $username .= ' (' . $user->comment . ')';
+            }
+            $username .= ' <' . $user->email . '>';
+
+            $table->add('id', rcube::Q(trim($username)));
+            $table->add('valid', $this->enigma->gettext($user->valid ? 'valid' : 'unknown'));
+            $table->set_row_attribs($user->revoked || !$user->valid ? 'deleted' : '');
+        }
+
+        $out .= html::tag('fieldset', null,
+            html::tag('legend', null,
+                $this->enigma->gettext('userids')) . $table->show());
+
+        return $out;
+    }
+
+    /**
+     * Key(s) export handler
+     */
+    private function cert_export()
+    {
+        $keys   = rcube_utils::get_input_value('_keys', rcube_utils::INPUT_GPC);
+        $engine = $this->enigma->load_engine();
+        $list   = $keys == '*' ? $engine->list_keys() : explode(',', $keys);
+
+        if (is_array($list)) {
+            $filename = 'export.pgp';
+            if (count($list) == 1) {
+                $filename = (is_object($list[0]) ? $list[0]->id : $list[0]) . '.pgp';
+            }
+
+            // send downlaod headers
+            header('Content-Type: application/pgp-keys');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+            if ($fp = fopen('php://output', 'w')) {
+                foreach ($list as $key) {
+                    $engine->export_key(is_object($key) ? $key->id : $key, $fp);
+                }
+            }
+        }
+
+        exit;
+    }
+
+    /**
+     * Key import (page) handler
+     */
+    private function cert_import()
+    {
+        // Import process
+        if ($data = rcube_utils::get_input_value('_keys', rcube_utils::INPUT_POST)) {
+            // Import from generation form (ajax request)
+            $this->enigma->load_engine();
+            $result = $this->enigma->engine->import_cert($data);
+
+            if (is_array($result)) {
+                $this->rc->output->command('enigma_cert_create_success');
+                $this->rc->output->show_message('enigma.certgeneratesuccess', 'confirmation');
+            }
+            else {
+                $this->rc->output->show_message('enigma.certimportfailed', 'error');
+            }
+
+            $this->rc->output->send();
+        }
+        else if ($_FILES['_file']['tmp_name'] && is_uploaded_file($_FILES['_file']['tmp_name'])) {
+            $this->enigma->load_engine();
+            $result = $this->enigma->engine->import_key($_FILES['_file']['tmp_name'], true);
+
+            if (is_array($result)) {
+                // reload list if any keys has been added
+                if ($result['imported']) {
+                    $this->rc->output->command('parent.enigma_list', 1);
+                }
+                else {
+                    $this->rc->output->command('parent.enigma_loadframe');
+                }
+
+                $this->rc->output->show_message('enigma.certimportsuccess', 'confirmation',
+                    array('new' => $result['imported'], 'old' => $result['unchanged']));
+
+                $this->rc->output->send('iframe');
+            }
+            else {
+                $this->rc->output->show_message('enigma.certimportfailed', 'error');
+            }
+        }
+        else if ($err = $_FILES['_file']['error']) {
+            if ($err == UPLOAD_ERR_INI_SIZE || $err == UPLOAD_ERR_FORM_SIZE) {
+                $this->rc->output->show_message('filesizeerror', 'error',
+                    array('size' => $this->rc->show_bytes(parse_bytes(ini_get('upload_max_filesize')))));
+            } else {
+                $this->rc->output->show_message('fileuploaderror', 'error');
+            }
+        }
+
+        $this->rc->output->add_handlers(array(
+            'importform' => array($this, 'tpl_cert_import_form'),
+        ));
+
+        $this->rc->output->set_pagetitle($this->enigma->gettext('certimport'));
+        $this->rc->output->send('enigma.certimport');
+    }
+
+    /**
+     * Template object for key import (upload) form
+     */
+    function tpl_cert_import_form($attrib)
+    {
+        $attrib += array('id' => 'rcmCertImportForm');
+
+        $upload = new html_inputfield(array('type' => 'file', 'name' => '_file',
+            'id' => 'rcmimportfile', 'size' => 30));
+
+        $form = html::p(null,
+            rcube::Q($this->enigma->gettext('certimporttext'), 'show')
+            . html::br() . html::br() . $upload->show()
+        );
+
+        $this->rc->output->add_label('selectimportfile', 'importwait');
+        $this->rc->output->add_gui_object('importform', $attrib['id']);
+
+        $out = $this->rc->output->form_tag(array(
+            'action' => $this->rc->url(array('action' => $this->rc->action, 'a' => 'import')),
+            'method' => 'post',
+            'enctype' => 'multipart/form-data') + $attrib,
+            $form);
+
+        return $out;
+    }
+
+    /**
+     * Server-side key pair generation handler
+     */
+    private function cert_generate()
+    {
+        $user = rcube_utils::get_input_value('_user', rcube_utils::INPUT_POST, true);
+        $pass = rcube_utils::get_input_value('_password', rcube_utils::INPUT_POST, true);
+        $size = (int) rcube_utils::get_input_value('_size', rcube_utils::INPUT_POST);
+
+        if ($size > 4096) {
+            $size = 4096;
+        }
+
+        $ident = rcube_mime::decode_address_list($user, 1, false);
+
+        if (empty($ident)) {
+            $this->rc->output->show_message('enigma.keygenerateerror', 'error');
+            $this->rc->output->send();
+        }
+
+        $this->enigma->load_engine();
+        $result = $this->enigma->engine->generate_key(array(
+            'user'     => $ident[1]['name'],
+            'email'    => $ident[1]['mailto'],
+            'password' => $pass,
+            'size'     => $size,
+        ));
+
+        if ($result instanceof enigma_key) {
+            $this->rc->output->command('enigma_key_create_success');
+            $this->rc->output->show_message('enigma.keygeneratesuccess', 'confirmation');
+        }
+        else {
+            $this->rc->output->show_message('enigma.keygenerateerror', 'error');
+        }
+
+        $this->rc->output->send();
+    }
+
+    /**
+     * Key generation page handler
+     */
+    private function cert_create()
+    {
+        $this->enigma->include_script('openpgp.min.js');
+
+        $this->rc->output->add_handlers(array(
+            'keyform' => array($this, 'tpl_key_create_form'),
+        ));
+
+        $this->rc->output->set_env('enigma_keygen_server', $this->rc->config->get('enigma_keygen_server'));
+
+        $this->rc->output->set_pagetitle($this->enigma->gettext('keygenerate'));
+        $this->rc->output->send('enigma.keycreate');
+    }
+
+    /**
+     * Template object for key generation form
+     */
+    function tpl_cert_create_form($attrib)
+    {
+        $attrib += array('id' => 'rcmCertCreateForm');
+        $table  = new html_table(array('cols' => 2));
+
+        // get user's identities
+        $identities = $this->rc->user->list_identities(null, true);
+
+        // Identity
+        $select = new html_select(array('name' => 'identity', 'id' => 'cert-ident'));
+		//enigma.js: user = $('#key-ident > option').filter(':selected').text(),
+        foreach ((array) $identities as $idx => $ident) {
+            $name = empty($ident['name']) ? ('<' . $ident['email'] . '>') : $ident['ident'];
+            $select->add($name, $idx);
+        }
+
+        $table->add('title', html::label('cert-name', rcube::Q($this->enigma->gettext('newcertident'))));
+        $table->add(null, $select->show(0));
+
+        // Key size
+        $select = new html_select(array('name' => 'size', 'id' => 'key-size'));
+        $select->add($this->enigma->gettext('key2048'), '2048');
+        $select->add($this->enigma->gettext('key4096'), '4096');
+
+        $table->add('title', html::label('cert-size', rcube::Q($this->enigma->gettext('newcertsize'))));
+        $table->add(null, $select->show());
+
+        // Password and confirm password
+        $table->add('title', html::label('key-pass', rcube::Q($this->enigma->gettext('newkeypass'))));
+        $table->add(null, rcube_output::get_edit_field('password', '',
+            array('id' => 'key-pass', 'size' => $attrib['size'], 'required' => true), 'password'));
+
+        $table->add('title', html::label('key-pass-confirm', rcube::Q($this->enigma->gettext('newkeypassconfirm'))));
+        $table->add(null, rcube_output::get_edit_field('password-confirm', '',
+            array('id' => 'key-pass-confirm', 'size' => $attrib['size'], 'required' => true), 'password'));
+
+        $this->rc->output->add_gui_object('keyform', $attrib['id']);
+        $this->rc->output->add_label('enigma.certgenerating', 'enigma.formerror',
+            'enigma.passwordsdiffer', 'enigma.certgenerateerror', 'enigma.nonameident',
+            'enigma.certgennosupport');
+
+        return $this->rc->output->form_tag(array(), $table->show($attrib));
+    }
+
+    /**
+     * Cert deleting
+     */
+    private function cert_delete()
+    {
+        /*$keys   = rcube_utils::get_input_value('_keys', rcube_utils::INPUT_POST);
+        $engine = $this->enigma->load_engine();
+
+        foreach ((array)$keys as $key) {
+            $res = $engine->delete_key($key);
+
+            if ($res !== true) {
+                $this->rc->output->show_message('enigma.keyremoveerror', 'error');
+                $this->rc->output->command('enigma_list');
+                $this->rc->output->send();
+            }
+        }
+
+        $this->rc->output->command('enigma_list');
+        $this->rc->output->show_message('enigma.keyremovesuccess', 'confirmation');
+        $this->rc->output->send(); */
     }
 
     /**

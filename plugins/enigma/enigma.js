@@ -4,14 +4,27 @@ window.rcmail && rcmail.addEventListener('init', function(evt) {
     if (rcmail.env.task == 'settings') {
         rcmail.register_command('plugin.enigma', function() { rcmail.goto_url('plugin.enigma') }, true);
 
-        if (rcmail.gui_objects.keyslist) {
-            rcmail.keys_list = new rcube_list_widget(rcmail.gui_objects.keyslist,
-                {multiselect:true, draggable:false, keyboard:false});
-            rcmail.keys_list
-                .addEventListener('select', function(o) { rcmail.enigma_keylist_select(o); })
-                .addEventListener('keypress', function(o) { rcmail.enigma_keylist_keypress(o); })
-                .init()
-                .focus();
+        if (rcmail.gui_objects.keyslist || rcmail.gui_objects.certlist) {
+            if (rcmail.gui_objects.keyslist) {
+                rcmail.keys_list = new rcube_list_widget(rcmail.gui_objects.keyslist,
+                    {multiselect:true, draggable:false, keyboard:false});
+            } else {
+                rcmail.keys_list = new rcube_list_widget(rcmail.gui_objects.certlist,
+                    {multiselect:true, draggable:false, keyboard:false});
+            }
+            if (rcmail.gui_objects.keyslist) {
+                rcmail.keys_list
+                    .addEventListener('select', function(o) { rcmail.enigma_keylist_select(o); })
+                    .addEventListener('keypress', function(o) { rcmail.enigma_keylist_keypress(o); })
+                    .init()
+                    .focus();
+            } else {
+                rcmail.keys_list
+                    .addEventListener('select', function(o) { rcmail.enigma_certlist_select(o); })
+                    .addEventListener('keypress', function(o) { rcmail.enigma_certlist_keypress(o); })
+                    .init()
+                    .focus();
+            }
 
             rcmail.enigma_list();
 
@@ -34,6 +47,22 @@ window.rcmail && rcmail.addEventListener('init', function(evt) {
 
             rcmail.addEventListener('responseafterplugin.enigmakeys', function() {
                 rcmail.enable_command('plugin.enigma-key-export', rcmail.env.rowcount > 0);
+            });
+        }
+
+        if (rcmail.env.action == 'plugin.enigmacerts') {
+            rcmail.register_command('search', function(props) {return rcmail.enigma_search(props); }, true);
+            rcmail.register_command('reset-search', function(props) {return rcmail.enigma_search_reset(props); }, true);
+            rcmail.register_command('plugin.enigma-import', function() { rcmail.enigma_import(); }, true);
+            rcmail.register_command('plugin.enigma-cert-export', function() { rcmail.enigma_export(); });
+            rcmail.register_command('plugin.enigma-cert-export-selected', function() { rcmail.enigma_export(true); });
+            rcmail.register_command('plugin.enigma-cert-import', function() { rcmail.enigma_cert_import(); }, true);
+            rcmail.register_command('plugin.enigma-cert-delete', function(props) { return rcmail.enigma_delete(); });
+            rcmail.register_command('plugin.enigma-cert-create', function(props) { return rcmail.enigma_cert_create(); }, true);
+            rcmail.register_command('plugin.enigma-cert-save', function(props) { return rcmail.enigma_cert_create_save(); }, true);
+
+            rcmail.addEventListener('responseafterplugin.enigmacerts', function() {
+                rcmail.enable_command('plugin.enigma-cert-export', rcmail.env.rowcount > 0);
             });
         }
     }
@@ -68,6 +97,12 @@ window.rcmail && rcmail.addEventListener('init', function(evt) {
 rcube_webmail.prototype.enigma_key_import = function()
 {
     this.enigma_loadframe('&_action=plugin.enigmakeys&_a=import');
+};
+
+// Display cert(s) import form
+rcube_webmail.prototype.enigma_cert_import = function()
+{
+    this.enigma_loadframe('&_action=plugin.enigmacerts&_a=import');
 };
 
 // Display key(s) generation form
@@ -134,6 +169,12 @@ rcube_webmail.prototype.enigma_key_create_success = function()
     parent.rcmail.enigma_list(1);
 };
 
+// Action executed after successful cert generation and import
+rcube_webmail.prototype.enigma_cert_create_success = function()
+{
+    parent.rcmail.enigma_list(1);
+};
+
 // Delete key(s)
 rcube_webmail.prototype.enigma_delete = function()
 {
@@ -181,7 +222,7 @@ rcube_webmail.prototype.enigma_import = function()
    }
 };
 
-// list row selection handler
+// list row selection handler (PGP Keys)
 rcube_webmail.prototype.enigma_keylist_select = function(list)
 {
     var id = list.get_single_selection(), url;
@@ -206,11 +247,35 @@ rcube_webmail.prototype.enigma_keylist_keypress = function(list)
         this.command('nextpage');
 };
 
+// list row selection handler (S/MIME certs)
+rcube_webmail.prototype.enigma_certlist_select = function(list)
+{
+    var id = list.get_single_selection(), url;
+
+    if (id)
+        url = '&_action=plugin.enigmacerts&_a=info&_id=' + id;
+
+    this.enigma_loadframe(url);
+    this.enable_command('plugin.enigma-cert-delete', 'plugin.enigma-cert-export-selected', list.selection.length > 0);
+};
+
+rcube_webmail.prototype.enigma_certlist_keypress = function(list)
+{
+    if (list.modkey == CONTROL_KEY)
+        return;
+
+    if (list.key_pressed == list.DELETE_KEY || list.key_pressed == list.BACKSPACE_KEY)
+        this.command('plugin.enigma-cert-delete');
+    else if (list.key_pressed == 33)
+        this.command('previouspage');
+    else if (list.key_pressed == 34)
+        this.command('nextpage');
+};
+
 // load key frame
 rcube_webmail.prototype.enigma_loadframe = function(url)
 {
     var frm, win;
-
     if (this.env.contentframe && window.frames && (frm = window.frames[this.env.contentframe])) {
         if (!url && (win = window.frames[this.env.contentframe])) {
             if (win.location && win.location.href.indexOf(this.env.blankpage) < 0)
