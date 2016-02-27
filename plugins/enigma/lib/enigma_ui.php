@@ -1067,7 +1067,7 @@ class enigma_ui
         }
         else if ($_FILES['_file']['tmp_name'] && is_uploaded_file($_FILES['_file']['tmp_name'])) {
             $this->enigma->load_engine();
-            $result = $this->enigma->engine->import_key($_FILES['_file']['tmp_name'], true);
+            $result = $this->enigma->engine->import_cert($_FILES['_file']['tmp_name'], true);
 
             if (is_array($result)) {
                 // reload list if any keys has been added

@@ -124,6 +124,33 @@ class enigma_driver_phpssl extends enigma_driver
 
     public function import($content, $isfile=false)
     {
+        if ($isfile) {
+            $cert = openssl_x509_parse(file_get_contents($content));
+        } else {
+            //TODO
+        }
+        /* from verify_sig_cert, see if it is applicable here
+        if (empty($cert) || empty($cert['subject'])) {
+            $errorstr = $this->get_openssl_error();
+            return new enigma_error(enigma_error::INTERNAL, $errorstr);
+        }
+
+        $data = new enigma_signature();
+
+        $data->id          = $cert['hash']; //?
+        $data->valid       = $validity;
+        $data->fingerprint = $cert['serialNumber'];
+        $data->created     = $cert['validFrom_time_t'];
+        $data->expires     = $cert['validTo_time_t'];
+        $data->name        = $cert['subject']['CN'];
+//        $data->comment     = '';
+        $data->email       = $cert['subject']['emailAddress'];
+
+        */
+    }
+
+    public function export($key)
+    {
     }
 
     public function list_keys($pattern='')
