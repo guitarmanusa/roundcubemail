@@ -45,10 +45,10 @@ class enigma_driver_phpssl extends enigma_driver
         // check if homedir exists (create it if not) and is readable
         if (!file_exists($homedir))
             return new enigma_error(enigma_error::INTERNAL,
-                "Keys directory doesn't exists: $homedir");
+                "Certificate directory doesn't exists: $homedir");
         if (!is_writable($homedir))
             return new enigma_error(enigma_error::INTERNAL,
-                "Keys directory isn't writeable: $homedir");
+                "Certificate directory isn't writeable: $homedir");
 
         $homedir = $homedir . '/' . $this->user;
 
@@ -58,10 +58,10 @@ class enigma_driver_phpssl extends enigma_driver
 
         if (!file_exists($homedir))
             return new enigma_error(enigma_error::INTERNAL,
-                "Unable to create keys directory: $homedir");
+                "Unable to create certificate directory: $homedir");
         if (!is_writable($homedir))
             return new enigma_error(enigma_error::INTERNAL,
-                "Unable to write to keys directory: $homedir");
+                "Unable to write to certificate directory: $homedir");
 
         $this->homedir = $homedir;
 
@@ -125,7 +125,11 @@ class enigma_driver_phpssl extends enigma_driver
     public function import($content, $isfile=false)
     {
         if ($isfile) {
-            $cert = openssl_x509_parse(file_get_contents($content));
+            $results = array();
+            $success = openssl_pkcs12_read(file_get_contents($content), $results, 'password');
+            if ($success) {
+                $success = openssl_pkey_export($results['pkey'], $result, '');
+            }
         } else {
             //TODO
         }
