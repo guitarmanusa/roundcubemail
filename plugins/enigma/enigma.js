@@ -1,14 +1,20 @@
 /* Enigma Plugin */
 
 window.rcmail && rcmail.addEventListener('init', function(evt) {
+
+    //automatic global
+    keytype = '';
+
     if (rcmail.env.task == 'settings') {
         rcmail.register_command('plugin.enigma', function() { rcmail.goto_url('plugin.enigma') }, true);
 
         if (rcmail.gui_objects.keyslist || rcmail.gui_objects.certlist) {
             if (rcmail.gui_objects.keyslist) {
+                keytype = 'gpgkeys';
                 rcmail.keys_list = new rcube_list_widget(rcmail.gui_objects.keyslist,
                     {multiselect:true, draggable:false, keyboard:false});
             } else {
+                keytype = 'smimecert';
                 rcmail.keys_list = new rcube_list_widget(rcmail.gui_objects.certlist,
                     {multiselect:true, draggable:false, keyboard:false});
             }
@@ -166,13 +172,13 @@ rcube_webmail.prototype.enigma_key_create_save = function()
 // Action executed after successful key generation and import
 rcube_webmail.prototype.enigma_key_create_success = function()
 {
-    parent.rcmail.enigma_list(1);
+    parent.rcmail.enigma_list_keys(1);
 };
 
 // Action executed after successful cert generation and import
 rcube_webmail.prototype.enigma_cert_create_success = function()
 {
-    parent.rcmail.enigma_list(1);
+    parent.rcmail.enigma_list_certs(1);
 };
 
 // Delete key(s)
@@ -198,7 +204,11 @@ rcube_webmail.prototype.enigma_export = function(selected)
     if (!keys.length)
         return;
 
-    this.goto_url('plugin.enigmakeys', {_a: 'export', _keys: keys});
+    if (keytype == 'gpgkeys') {
+        this.goto_url('plugin.enigmakeys', {_a: 'export', _keys: keys});
+    } else {
+        this.goto_url('plugin.enigmacerts', {_a: 'export', _keys: keys});
+    }
 };
 
 // Submit key(s) import form
@@ -216,6 +226,7 @@ rcube_webmail.prototype.enigma_import = function()
         var lock = this.set_busy(true, 'importwait');
 
         form.action = this.add_url(form.action, '_unlock', lock);
+        
         form.submit();
 
         this.lock_form(form, true);
@@ -227,11 +238,18 @@ rcube_webmail.prototype.enigma_keylist_select = function(list)
 {
     var id = list.get_single_selection(), url;
 
-    if (id)
+    if (id && keytype == 'gpgkeys') {
         url = '&_action=plugin.enigmakeys&_a=info&_id=' + id;
+    } else if (id && keytype == 'smimecert') {
+        url = '&_action=plugin.enigmacerts&_a=info&_id=' + id;
+    }
 
     this.enigma_loadframe(url);
-    this.enable_command('plugin.enigma-key-delete', 'plugin.enigma-key-export-selected', list.selection.length > 0);
+    if (keytype == 'gpgkeys') {
+        this.enable_command('plugin.enigma-key-delete', 'plugin.enigma-key-export-selected', list.selection.length > 0);
+    } else {
+        this.enable_command('plugin.enigma-cert-delete', 'plugin.enigma-cert-export-selected', list.selection.length > 0);
+    }
 };
 
 rcube_webmail.prototype.enigma_keylist_keypress = function(list)
@@ -289,6 +307,9 @@ rcube_webmail.prototype.enigma_loadframe = function(url)
 };
 
 // Search keys/certs
+// TODO - duplicate and make one for keys, one for certs
+//        find all instances of enigma_search and replace
+//        with enigma_key_search and enigma_cert_search
 rcube_webmail.prototype.enigma_search = function(props)
 {
     if (!props && this.gui_objects.qsearchbox)
@@ -302,7 +323,12 @@ rcube_webmail.prototype.enigma_search = function(props)
         this.env.current_page = 1;
         this.enigma_loadframe();
         this.enigma_clear_list();
-        this.http_post('plugin.enigmakeys', params, lock);
+
+        if (keytype == 'gpgkeys') {
+            this.http_post('plugin.enigmakeys', params, lock);
+        } else {
+            this.http_post('plugin.enigmacerts', params, lock);
+        }
     }
 
     return false;
@@ -326,6 +352,8 @@ rcube_webmail.prototype.enigma_search_reset = function(props)
 }
 
 // Keys/certs listing
+// TODO - fixme, need 2 separate functions, one for dealing
+//        with a key list and one for cert list
 rcube_webmail.prototype.enigma_list = function(page)
 {
     var params = {'_a': 'list'},
@@ -339,7 +367,12 @@ rcube_webmail.prototype.enigma_list = function(page)
         params._p = page;
 
     this.enigma_clear_list();
-    this.http_post('plugin.enigmakeys', params, lock);
+
+    if (keytype == 'gpgkeys') {
+        this.http_post('plugin.enigmakeys', params, lock);
+    } else {
+        this.http_post('plugin.enigmacerts', params, lock);
+    }
 }
 
 // Change list page
@@ -364,7 +397,11 @@ rcube_webmail.prototype.enigma_clear_list = function()
     if (this.keys_list)
         this.keys_list.clear(true);
 
-    this.enable_command('plugin.enigma-key-delete', 'plugin.enigma-key-delete-selected', false);
+    if (keytype == 'gpgkeys') {
+        this.enable_command('plugin.enigma-key-delete', 'plugin.enigma-key-delete-selected', false);
+    } else {
+        this.enable_command('plugin.enigma-cert-delete', 'plugin.enigma-cert-delete-selected', false);        
+    }
 }
 
 // Adds a row to the list

@@ -46,6 +46,7 @@ class enigma_ui
         $action = rcube_utils::get_input_value('_a', rcube_utils::INPUT_GPC);
 
         if ($this->rc->action == 'plugin.enigmakeys') {
+            touch("here_$action.key.txt");
             switch ($action) {
                 case 'delete':
                     $this->key_delete();
@@ -94,6 +95,7 @@ class enigma_ui
 
         // Preferences UI
         else if ($this->rc->action == 'plugin.enigmacerts') {
+            touch("here_$action.txt");
             switch ($action) {
                 case 'delete':
                     $this->cert_delete();
@@ -121,6 +123,7 @@ class enigma_ui
 
                 case 'search':
                 case 'list':
+                    touch("here.txt");
                     $this->cert_list();
                     break;
 
@@ -132,7 +135,7 @@ class enigma_ui
             $this->rc->output->add_handlers(array(
                     'certlist'     => array($this, 'tpl_cert_list'),
                     'certframe'     => array($this, 'tpl_cert_frame'),
-                    'countdisplay' => array($this, 'tpl_keys_rowcount'),
+                    'countdisplay' => array($this, 'tpl_cert_rowcount'),
                     'searchform'   => array($this->rc->output, 'search_form'),
             ));
 
@@ -731,9 +734,9 @@ class enigma_ui
     }
 
 /*--------------------------------------------------------------------------------
-+
-+      S/MIME handlers
-+
+*
+*      S/MIME handlers
+*
 ---------------------------------------------------------------------------------*/
 
     /**
@@ -759,7 +762,7 @@ class enigma_ui
     }
 
     /**
-     * Template object for list of keys.
+     * Template object for list of certificates.
      *
      * @param array Object attributes
      *
@@ -793,7 +796,9 @@ class enigma_ui
      */
     private function cert_list()
     {
+        touch("maybe.txt");
         $this->enigma->load_engine();
+        $this->enigma->engine->load_smime_driver();
 
         $pagesize = $this->rc->config->get('pagesize', 100);
         $page     = max(intval(rcube_utils::get_input_value('_p', rcube_utils::INPUT_GPC)), 1);
@@ -801,6 +806,7 @@ class enigma_ui
 
         // Get the list
         $list = $this->enigma->engine->list_certs($search);
+        error_log($list);
 
         if ($list && ($list instanceof enigma_error))
             $this->rc->output->show_message('enigma.certlisterror', 'error');
@@ -829,7 +835,7 @@ class enigma_ui
         $this->rc->output->set_env('pagecount', ceil($listsize/$pagesize));
         $this->rc->output->set_env('current_page', $page);
         $this->rc->output->command('set_rowcount',
-            $this->get_rowcount_text($listsize, $size, $page));
+            $this->get_rowcount_cert_text($listsize, $size, $page));
 
         $this->rc->output->send();
     }
@@ -848,16 +854,16 @@ class enigma_ui
 
         $this->rc->output->add_gui_object('countdisplay', $attrib['id']);
 
-        return html::span($attrib, $this->get_rowcount_text());
+        return html::span($attrib, $this->get_rowcount_cert_text());
     }
 
     /**
      * Returns text representation of list records counter
      */
-/*    private function get_rowcount_text($all=0, $curr_count=0, $page=1)
+    private function get_rowcount_cert_text($all=0, $curr_count=0, $page=1)
     {
         if (!$curr_count) {
-            $out = $this->enigma->gettext('nokeysfound');
+            $out = $this->enigma->gettext('nocertsfound');
         }
         else {
             $pagesize = $this->rc->config->get('pagesize', 100);
@@ -874,7 +880,6 @@ class enigma_ui
 
         return $out;
     }
-*/
 
     /**
      * Key information page handler
@@ -913,7 +918,7 @@ class enigma_ui
     }
 
     /**
-     * Template object for key information page content
+     * Template object for cert information page content
      */
     function tpl_cert_data($attrib)
     {
@@ -1016,7 +1021,7 @@ class enigma_ui
     }
 
     /**
-     * Key(s) export handler
+     * Certificate(s) export handler
      */
     private function cert_export()
     {
@@ -1045,7 +1050,7 @@ class enigma_ui
     }
 
     /**
-     * Key import (page) handler
+     * Cert import (page) handler
      */
     private function cert_import()
     {
@@ -1132,11 +1137,11 @@ class enigma_ui
     }
 
     /**
-     * Server-side key pair generation handler
+     * Server-side certificate generation handler
      */
     private function cert_generate()
     {
-        $user = rcube_utils::get_input_value('_user', rcube_utils::INPUT_POST, true);
+/*        $user = rcube_utils::get_input_value('_user', rcube_utils::INPUT_POST, true);
         $pass = rcube_utils::get_input_value('_password', rcube_utils::INPUT_POST, true);
         $size = (int) rcube_utils::get_input_value('_size', rcube_utils::INPUT_POST);
 
@@ -1168,14 +1173,15 @@ class enigma_ui
         }
 
         $this->rc->output->send();
+*/
     }
 
     /**
-     * Key generation page handler
+     * Certificate generation page handler
      */
     private function cert_create()
     {
-        $this->enigma->include_script('openpgp.min.js');
+/*        $this->enigma->include_script('openpgp.min.js');
 
         $this->rc->output->add_handlers(array(
             'keyform' => array($this, 'tpl_key_create_form'),
@@ -1185,14 +1191,15 @@ class enigma_ui
 
         $this->rc->output->set_pagetitle($this->enigma->gettext('keygenerate'));
         $this->rc->output->send('enigma.keycreate');
+*/
     }
 
     /**
-     * Template object for key generation form
+     * Template object for certificate generation form
      */
     function tpl_cert_create_form($attrib)
     {
-        $attrib += array('id' => 'rcmCertCreateForm');
+/*        $attrib += array('id' => 'rcmCertCreateForm');
         $table  = new html_table(array('cols' => 2));
 
         // get user's identities
@@ -1232,6 +1239,7 @@ class enigma_ui
             'enigma.certgennosupport');
 
         return $this->rc->output->form_tag(array(), $table->show($attrib));
+*/
     }
 
     /**
@@ -1290,6 +1298,11 @@ class enigma_ui
         $menu->add(null, $chbox->show($this->rc->config->get('enigma_encrypt_all') ? 1 : 0,
             array('name' => '_enigma_encrypt', 'id' => 'enigmaencryptopt')));
 
+        $menu->add(null, html::label(array('for' => 'enigmaattachpubkeyopt'),
+            rcube::Q($this->enigma->gettext('attachpubkeymsg'))));
+        $menu->add(null, $chbox->show(1, 
+            array('name' => '_enigma_attachpubkey', 'id' => 'enigmaattachpubkeyopt')));
+        
         $menu = html::div(array('id' => 'enigmamenu', 'class' => 'popupmenu'), $menu->show());
 
         // Options menu contents

@@ -37,7 +37,7 @@ class enigma_driver_phpssl extends enigma_driver
     function init()
     {
         $homedir = $this->rc->config->get('enigma_smime_homedir', INSTALL_PATH . '/plugins/enigma/home');
-
+ 
         if (!$homedir)
             return new enigma_error(enigma_error::INTERNAL,
                 "Option 'enigma_smime_homedir' not specified");
@@ -64,6 +64,12 @@ class enigma_driver_phpssl extends enigma_driver
                 "Unable to write to certificate directory: $homedir");
 
         $this->homedir = $homedir;
+        
+        //check if certchain.pem exists, if not create it
+        if (!file_exists($homedir."/certchain.pem")) {
+            touch($homedir."/certchain.pem");
+            chmod($homedir."/certchain.pem",0700);
+        }
 
     }
 
@@ -122,7 +128,7 @@ class enigma_driver_phpssl extends enigma_driver
         return $sig;
     }
 
-    public function import($content, $isfile=false)
+    public function import($content, $isfile=false, $password='')
     {
         if ($isfile) {
             $results = array();
@@ -157,8 +163,21 @@ class enigma_driver_phpssl extends enigma_driver
     {
     }
 
+    /**
+     * Certificate listing.
+     *
+     * @param string Optional pattern for key ID, user ID or fingerprint
+     *
+     * @return mixed Array of enigma_key objects or enigma_error
+     */
     public function list_keys($pattern='')
     {
+        //Open file
+        $certchain = fopen($this->homedir."/certchain.pem", "r") or die("Unable to open file!");
+        //For each in explode(file)
+            //openssl_x509_parse
+                //pull out identifiers, store to array
+        //return array
     }
 
     public function get_key($keyid)

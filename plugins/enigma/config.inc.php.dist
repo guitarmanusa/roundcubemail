@@ -13,6 +13,9 @@ $config['enigma_smime_driver'] = 'phpssl';
 // Must be writeable by PHP process
 $config['enigma_pgp_homedir'] = null;
 
+// Must be writeable by PHP process
+$config['enigma_smime_homedir'] = null;
+
 // Enables signatures verification feature.
 $config['enigma_signatures'] = true;
 

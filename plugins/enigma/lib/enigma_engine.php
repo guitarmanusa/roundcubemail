@@ -98,6 +98,7 @@ class enigma_engine
      */
     function load_smime_driver()
     {
+        error_log("HERE??");
         if ($this->smime_driver) {
             return;
         }
@@ -852,6 +853,30 @@ class enigma_engine
 
         return $result;
     }
+    
+    /**
+     * S/MIME certificate listing.
+     *
+     * @param mixed Key ID/Name pattern
+     *
+     * @return mixed Array of certificates or enigma_error
+     */
+    function list_certs($pattern = '')
+    {
+        touch("here.txt");
+        $this->load_smime_driver();
+        $result = $this->smime_driver->list_keys($pattern);
+
+        if ($result instanceof enigma_error) {
+            rcube::raise_error(array(
+                'code' => 600, 'type' => 'php',
+                'file' => __FILE__, 'line' => __LINE__,
+                'message' => "Enigma plugin: " . $result->getMessage()
+                ), true, false);
+        }
+
+        return $result;
+    }    
 
     /**
      * Find PGP private/public key
