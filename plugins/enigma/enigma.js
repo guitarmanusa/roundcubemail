@@ -18,19 +18,11 @@ window.rcmail && rcmail.addEventListener('init', function(evt) {
                 rcmail.keys_list = new rcube_list_widget(rcmail.gui_objects.certlist,
                     {multiselect:true, draggable:false, keyboard:false});
             }
-            if (rcmail.gui_objects.keyslist) {
-                rcmail.keys_list
-                    .addEventListener('select', function(o) { rcmail.enigma_keylist_select(o); })
-                    .addEventListener('keypress', function(o) { rcmail.enigma_keylist_keypress(o); })
-                    .init()
-                    .focus();
-            } else {
-                rcmail.keys_list
-                    .addEventListener('select', function(o) { rcmail.enigma_certlist_select(o); })
-                    .addEventListener('keypress', function(o) { rcmail.enigma_certlist_keypress(o); })
-                    .init()
-                    .focus();
-            }
+            rcmail.keys_list
+                .addEventListener('select', function(o) { rcmail.enigma_keylist_select(o); })
+                .addEventListener('keypress', function(o) { rcmail.enigma_keylist_keypress(o); })
+                .init()
+                .focus();
 
             rcmail.enigma_list();
 
@@ -62,10 +54,10 @@ window.rcmail && rcmail.addEventListener('init', function(evt) {
             rcmail.register_command('plugin.enigma-import', function() { rcmail.enigma_import(); }, true);
             rcmail.register_command('plugin.enigma-cert-export', function() { rcmail.enigma_export(); });
             rcmail.register_command('plugin.enigma-cert-export-selected', function() { rcmail.enigma_export(true); });
-            rcmail.register_command('plugin.enigma-cert-import', function() { rcmail.enigma_cert_import(); }, true);
+            rcmail.register_command('plugin.enigma-cert-import', function() { rcmail.enigma_key_import(); }, true);
             rcmail.register_command('plugin.enigma-cert-delete', function(props) { return rcmail.enigma_delete(); });
-            rcmail.register_command('plugin.enigma-cert-create', function(props) { return rcmail.enigma_cert_create(); }, true);
-            rcmail.register_command('plugin.enigma-cert-save', function(props) { return rcmail.enigma_cert_create_save(); }, true);
+            rcmail.register_command('plugin.enigma-cert-create', function(props) { return rcmail.enigma_key_create(); }, true);
+            rcmail.register_command('plugin.enigma-cert-save', function(props) { return rcmail.enigma_key_create_save(); }, true);
 
             rcmail.addEventListener('responseafterplugin.enigmacerts', function() {
                 rcmail.enable_command('plugin.enigma-cert-export', rcmail.env.rowcount > 0);
@@ -102,19 +94,21 @@ window.rcmail && rcmail.addEventListener('init', function(evt) {
 // Display key(s) import form
 rcube_webmail.prototype.enigma_key_import = function()
 {
-    this.enigma_loadframe('&_action=plugin.enigmakeys&_a=import');
-};
-
-// Display cert(s) import form
-rcube_webmail.prototype.enigma_cert_import = function()
-{
-    this.enigma_loadframe('&_action=plugin.enigmacerts&_a=import');
+    if (keytype == 'gpgkeys') {
+        this.enigma_loadframe('&_action=plugin.enigmakeys&_a=import');
+    } else {
+        this.enigma_loadframe('&_action=plugin.enigmacerts&_a=import');
+    }
 };
 
 // Display key(s) generation form
 rcube_webmail.prototype.enigma_key_create = function()
 {
-    this.enigma_loadframe('&_action=plugin.enigmakeys&_a=create');
+    if (keytype == 'gpgkeys') {
+        this.enigma_loadframe('&_action=plugin.enigmakeys&_a=create');
+    } else {
+        this.enigma_loadframe('&_action=plugin.enigmacerts&_a=create');
+    }
 };
 
 // Generate key(s) and submit them
@@ -136,36 +130,41 @@ rcube_webmail.prototype.enigma_key_create_save = function()
     if (user.match(/^<[^>]+>$/))
         return alert(this.get_label('enigma.nonameident'));
 
-    // generate keys
+    // generate PGP keys
     // use OpenPGP.js if browser supports required features
-    if (window.openpgp && window.crypto && (window.crypto.getRandomValues || window.crypto.subtle)) {
-        lock = this.set_busy(true, 'enigma.keygenerating');
-        options = {
-            numBits: size,
-            userId: user,
-            passphrase: password
-        };
+    if (keytype == 'gpgkeys') {
+        if (window.openpgp && window.crypto && (window.crypto.getRandomValues || window.crypto.subtle)) {
+            lock = this.set_busy(true, 'enigma.keygenerating');
+            options = {
+                numBits: size,
+                userId: user,
+                passphrase: password
+            };
 
-        openpgp.generateKeyPair(options).then(function(keypair) {
-            // success
-            var post = {_a: 'import', _keys: keypair.privateKeyArmored};
+            openpgp.generateKeyPair(options).then(function(keypair) {
+                // success
+                var post = {_a: 'import', _keys: keypair.privateKeyArmored};
 
-            // send request to server
-            rcmail.http_post('plugin.enigmakeys', post, lock);
-        }, function(error) {
-            // failure
-            rcmail.set_busy(false, null, lock);
-            rcmail.display_message(rcmail.get_label('enigma.keygenerateerror'), 'error');
-        });
-    }
-    // generate keys on the server
-    else if (rcmail.env.enigma_keygen_server) {
-        lock = this.set_busy(true, 'enigma.keygenerating');
-        options = {_a: 'generate', _user: user, _password: password, _size: size};
-        rcmail.http_post('plugin.enigmakeys', options, lock);
-    }
-    else {
-        rcmail.display_message(rcmail.get_label('enigma.keygennosupport'), 'error');
+                // send request to server
+                rcmail.http_post('plugin.enigmakeys', post, lock);
+            }, function(error) {
+                // failure
+                rcmail.set_busy(false, null, lock);
+                rcmail.display_message(rcmail.get_label('enigma.keygenerateerror'), 'error');
+            });
+        }
+        // generate keys on the server
+        else if (rcmail.env.enigma_keygen_server) {
+            lock = this.set_busy(true, 'enigma.keygenerating');
+            options = {_a: 'generate', _user: user, _password: password, _size: size};
+            rcmail.http_post('plugin.enigmakeys', options, lock);
+        }
+        else {
+            rcmail.display_message(rcmail.get_label('enigma.keygennosupport'), 'error');
+        }
+    } else //generate S/MIME certificate
+    {
+        //TODO cert generation (Certificate Signing Request?)
     }
 };
 
@@ -193,7 +192,11 @@ rcube_webmail.prototype.enigma_delete = function()
         post = {_a: 'delete', _keys: keys};
 
     // send request to server
-    this.http_post('plugin.enigmakeys', post, lock);
+    if (keytype == 'gpgkeys') {
+        this.http_post('plugin.enigmakeys', post, lock);
+    } else {
+        this.http_post('plugin.enigmacerts', post, lock);
+    }
 };
 
 // Export key(s)
@@ -233,7 +236,7 @@ rcube_webmail.prototype.enigma_import = function()
    }
 };
 
-// list row selection handler (PGP Keys)
+// list row selection handler
 rcube_webmail.prototype.enigma_keylist_select = function(list)
 {
     var id = list.get_single_selection(), url;
@@ -257,34 +260,12 @@ rcube_webmail.prototype.enigma_keylist_keypress = function(list)
     if (list.modkey == CONTROL_KEY)
         return;
 
-    if (list.key_pressed == list.DELETE_KEY || list.key_pressed == list.BACKSPACE_KEY)
-        this.command('plugin.enigma-key-delete');
-    else if (list.key_pressed == 33)
-        this.command('previouspage');
-    else if (list.key_pressed == 34)
-        this.command('nextpage');
-};
-
-// list row selection handler (S/MIME certs)
-rcube_webmail.prototype.enigma_certlist_select = function(list)
-{
-    var id = list.get_single_selection(), url;
-
-    if (id)
-        url = '&_action=plugin.enigmacerts&_a=info&_id=' + id;
-
-    this.enigma_loadframe(url);
-    this.enable_command('plugin.enigma-cert-delete', 'plugin.enigma-cert-export-selected', list.selection.length > 0);
-};
-
-rcube_webmail.prototype.enigma_certlist_keypress = function(list)
-{
-    if (list.modkey == CONTROL_KEY)
-        return;
-
-    if (list.key_pressed == list.DELETE_KEY || list.key_pressed == list.BACKSPACE_KEY)
-        this.command('plugin.enigma-cert-delete');
-    else if (list.key_pressed == 33)
+    if (list.key_pressed == list.DELETE_KEY || list.key_pressed == list.BACKSPACE_KEY) {
+        if (keytype == 'gpgkeys')
+            this.command('plugin.enigma-key-delete');
+        else
+            this.command('plugin.enigma-key-delete');
+    } else if (list.key_pressed == 33)
         this.command('previouspage');
     else if (list.key_pressed == 34)
         this.command('nextpage');

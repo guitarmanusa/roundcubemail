@@ -85,6 +85,14 @@ class enigma_driver_phpssl extends enigma_driver
     {
     }
 
+    /**
+     * Signature verification.
+     *
+     * @param string Message body
+     * @param string Signature, if message is of type PGP/MIME and body doesn't contain it
+     *
+     * @return mixed Signature information (enigma_signature) or enigma_error
+     */
     function verify($struct, $message)
     {
         // use common temp dir
@@ -130,12 +138,15 @@ class enigma_driver_phpssl extends enigma_driver
 
     public function import($content, $isfile=false, $password='')
     {
-        if ($isfile) {
-            $results = array();
-            $success = openssl_pkcs12_read(file_get_contents($content), $results, 'password');
-            if ($success) {
-                $success = openssl_pkey_export($results['pkey'], $result, '');
-            }
+        $results = array();
+
+        if ($isfile)
+            $content = file_get_contents($content);
+ 
+        $success = openssl_pkcs12_read($content, $results, $password);
+
+        if ($success) {
+            $success = openssl_pkey_export($results['pkey'], $result, '');
         } else {
             //TODO
         }
@@ -173,11 +184,23 @@ class enigma_driver_phpssl extends enigma_driver
     public function list_keys($pattern='')
     {
         //Open file
-        $certchain = fopen($this->homedir."/certchain.pem", "r") or die("Unable to open file!");
-        //For each in explode(file)
+        $certchain = file_get_contents($this->homedir."/certchain.pem", "r");
+
+        if (!$certchain)
+            //TODO return enigma error
+            return false; 
+
+        preg_match($certchain, $certs);
+        $results = array();
+
+        //For each in array(certs)
+        foreach ( $certs as $cert ) {
             //openssl_x509_parse
+            $cert_attribs = openssl_x509_parse($cert);
                 //pull out identifiers, store to array
+        }
         //return array
+        return results
     }
 
     public function get_key($keyid)
@@ -200,49 +223,6 @@ class enigma_driver_phpssl extends enigma_driver
     {
     }
 
-    /**
-     * Converts Crypt_GPG_Key object into Enigma's key object
-     *
-     * @param Crypt_GPG_Key Key object
-     *
-     * @return enigma_key Key object
-     */
-    private function parse_key($key)
-    {
-/*
-        $ekey = new enigma_key();
-
-        foreach ($key->getUserIds() as $idx => $user) {
-            $id = new enigma_userid();
-            $id->name    = $user->getName();
-            $id->comment = $user->getComment();
-            $id->email   = $user->getEmail();
-            $id->valid   = $user->isValid();
-            $id->revoked = $user->isRevoked();
-
-            $ekey->users[$idx] = $id;
-        }
-        
-        $ekey->name = trim($ekey->users[0]->name . ' <' . $ekey->users[0]->email . '>');
-
-        foreach ($key->getSubKeys() as $idx => $subkey) {
-                $skey = new enigma_subkey();
-                $skey->id          = $subkey->getId();
-                $skey->revoked     = $subkey->isRevoked();
-                $skey->created     = $subkey->getCreationDate();
-                $skey->expires     = $subkey->getExpirationDate();
-                $skey->fingerprint = $subkey->getFingerprint();
-                $skey->has_private = $subkey->hasPrivate();
-
-                $ekey->subkeys[$idx] = $skey;
-        };
-        
-        $ekey->id = $ekey->subkeys[0]->id;
-        
-        return $ekey;
-*/
-    }
-
     private function get_openssl_error()
     {
         $tmp = array();
@@ -253,6 +233,68 @@ class enigma_driver_phpssl extends enigma_driver
         return join("\n", array_values($tmp));
     }
 
+    private function ssl_errcode($output) {
+        $results = array();
+
+        if ($output !== true) {
+            while ($errmsg = $this->get_openssl_error()) {
+                if (preg_match('/^error:([^:]+):(.*)$/', $errmsg, $errcode)) {
+                    switch ($errcode[1]) {
+                        case '2107C080': 
+                            $nocert = true;
+                            break;
+                        case '04091068':
+                            $signerr = true;
+                            break;
+                        case '????????':   // It is necessary to clarify the error code when expired or incorrect certificate
+                            $certbad = true;
+                            break;
+                        case '21075075':
+                            $issbad = true;
+                            break;
+                        default:
+                            $error = true;
+                    }
+                }
+                else {
+                    $error = true;
+                }
+
+                $results[] = $errmsg;
+            }
+            if ($error || $output === -1) {  
+                $r = 'error';
+            }
+            elseif ($nocert) {
+                $r = 'nocert';
+            }
+            elseif ($signerr) {
+                $r = 'signerr';
+            }
+            elseif ($certbad) {
+                $r = 'certbad';
+            }
+            elseif ($issbad) {
+                $r = 'issbad';
+            }
+            else {
+                $r = 'error';   // result is not true without error messages
+            }
+        }
+        else {
+            $r = 'ok';
+        }
+        return array($r,implode("\n",$results));
+    }
+
+    /**
+     * Converts S/MIME Certificate object into Enigma's key object
+     *
+     * @param filename /path/to/certificate (PEM format)
+     * @param validity boolean
+     *
+     * @return enigma_key Key object
+     */
     private function parse_sig_cert($file, $validity)
     {
         $cert = openssl_x509_parse(file_get_contents($file));
@@ -270,10 +312,51 @@ class enigma_driver_phpssl extends enigma_driver
         $data->created     = $cert['validFrom_time_t'];
         $data->expires     = $cert['validTo_time_t'];
         $data->name        = $cert['subject']['CN'];
-//        $data->comment     = '';
+//      $data->comment     = '';
         $data->email       = $cert['subject']['emailAddress'];
 
         return $data;
     }
 
+    private function get_user_info_from_cert($file)
+    {
+        $cert     = openssl_x509_parse(file_get_contents($file));
+        $sub      = $cert['subject'];   
+        $ret      = array();
+
+        if (array_key_exists('emailAddress', $sub)) {
+            $ret['email'] = $sub['emailAddress'];
+        }
+
+        if (array_key_exists('CN', $sub)) {
+            $ret['name'] = $sub['CN'];
+        }
+
+        if (array_key_exists('issuer', $cert)) {
+            $issuer = $cert['issuer'];
+            if (array_key_exists('O', $issuer)) {
+                $ret['issuer'] = $issuer['O'];
+            }
+        }
+
+        // Scan subAltName for email addresses
+        if (array_key_exists('extensions', $cert) && array_key_exists('subjectAltName', $cert['extensions'])) {
+
+            $emailAddresses = isset($ret['email'])?array($ret['email']):array();  
+
+            // Not shure that it is correct, but do not drop address in Common Name if it is.            
+            foreach (explode(', ', $cert['extensions']['subjectAltName']) as $altName) {
+                $parts = explode(':', $altName);
+                if ($parts[0] == 'email') {
+                    array_push ($emailAddresses, $parts[1]);
+                }
+            }
+
+            if (count($emailAddresses) > 0) {
+                $ret['email'] = $emailAddresses;
+            }
+        }
+
+        return $ret;
+    }
 }

@@ -67,7 +67,6 @@ class enigma_driver_gnupg extends enigma_driver
                 "Unable to write to keys directory: $homedir");
 
         $this->homedir = $homedir;
-        touch($this->homedir."/test1.txt");
         
         // Create Crypt_GPG object
         try {

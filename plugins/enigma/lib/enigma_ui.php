@@ -46,7 +46,6 @@ class enigma_ui
         $action = rcube_utils::get_input_value('_a', rcube_utils::INPUT_GPC);
 
         if ($this->rc->action == 'plugin.enigmakeys') {
-            touch("here_$action.key.txt");
             switch ($action) {
                 case 'delete':
                     $this->key_delete();
@@ -123,7 +122,6 @@ class enigma_ui
 
                 case 'search':
                 case 'list':
-                    touch("here.txt");
                     $this->cert_list();
                     break;
 
@@ -1333,6 +1331,7 @@ class enigma_ui
 
         $engine  = $this->enigma->engine;
         $part_id = $p['part']->mime_id;
+        touch("mime_id_$part_id.txt");
 
         // Decryption status
         if (($found = $this->find_part_id($part_id, $engine->decryptions)) !== null
@@ -1373,9 +1372,12 @@ class enigma_ui
         }
 
         // Signature verification status
+        print_r($engine);
+
         if (($found = $this->find_part_id($part_id, $engine->signatures)) !== null
             && ($sig = $engine->signatures[$found])
         ) {
+            touch("smime.txt");
             $attach_scripts = true;
 
             // show the message only once
@@ -1386,6 +1388,7 @@ class enigma_ui
 
             if ($sig instanceof enigma_signature) {
                 $sender = ($sig->name ? $sig->name . ' ' : '') . '<' . $sig->email . '>';
+                touch("$sender.txt");
 
                 if ($sig->valid === enigma_error::UNVERIFIED) {
                     $attrib['class'] = 'enigmawarning';
