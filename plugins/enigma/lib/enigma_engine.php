@@ -891,7 +891,6 @@ class enigma_engine
      */
     function list_certs($pattern = '')
     {
-        touch("here.txt");
         $this->load_smime_driver();
         $result = $this->smime_driver->list_keys($pattern);
 

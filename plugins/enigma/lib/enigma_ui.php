@@ -1329,7 +1329,6 @@ class enigma_ui
 
         $engine  = $this->enigma->engine;
         $part_id = $p['part']->mime_id;
-        touch("mime_id_$part_id.txt");
 
         // Decryption status
         if (($found = $this->find_part_id($part_id, $engine->decryptions)) !== null
@@ -1374,7 +1373,6 @@ class enigma_ui
         if (($found = $this->find_part_id($part_id, $engine->signatures)) !== null
             && ($sig = $engine->signatures[$found])
         ) {
-            touch("smime.txt");
             $attach_scripts = true;
 
             // show the message only once
@@ -1385,7 +1383,6 @@ class enigma_ui
 
             if ($sig instanceof enigma_signature) {
                 $sender = ($sig->name ? $sig->name . ' ' : '') . '<' . $sig->email . '>';
-                touch("$sender.txt");
 
                 if ($sig->valid === enigma_error::UNVERIFIED) {
                     $attrib['class'] = 'enigmawarning';

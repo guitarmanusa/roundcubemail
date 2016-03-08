@@ -20,6 +20,7 @@ class enigma_driver_phpssl extends enigma_driver
     private $rc;
     private $homedir;
     private $user;
+    private $trusted_CAs;
 
     function __construct($user)
     {
@@ -37,6 +38,7 @@ class enigma_driver_phpssl extends enigma_driver
     function init()
     {
         $homedir = $this->rc->config->get('enigma_smime_homedir', INSTALL_PATH . '/plugins/enigma/home');
+        $trusted_CAs = $this->rc->config->get('enigma_root_cas_location', "/etc/ssl/certs");
  
         if (!$homedir)
             return new enigma_error(enigma_error::INTERNAL,
@@ -68,7 +70,7 @@ class enigma_driver_phpssl extends enigma_driver
         //check if certchain.pem exists, if not create it
         if (!file_exists($homedir."/certchain.pem")) {
             touch($homedir."/certchain.pem");
-            chmod($homedir."/certchain.pem",0700);
+            chmod($homedir."/certchain.pem",0600);
         }
 
     }
@@ -88,8 +90,8 @@ class enigma_driver_phpssl extends enigma_driver
     /**
      * Signature verification.
      *
-     * @param string Message body
-     * @param string Signature, if message is of type PGP/MIME and body doesn't contain it
+     * @param string Full MIME Message body (including headers)
+     * @param string Signature, if message is of type S/MIME and body doesn't contain it
      *
      * @return mixed Signature information (enigma_signature) or enigma_error
      */
@@ -97,12 +99,12 @@ class enigma_driver_phpssl extends enigma_driver
     {
         // @TODO: use stored certificates
         // TODO: add user trusted CA's
-        touch("smime.crt");
+        touch($this->homedir . "/smime.crt");
 
-        $cert_file = "smime.crt";
+        $cert_file = $this->homedir . "/smime.crt";
 
         // try with certificate verification
-        $sig      = openssl_pkcs7_verify($text, 0, $cert_file, array("/etc/ssl/certs"));
+        $sig      = openssl_pkcs7_verify($text, 0, $cert_file, array($trusted_CAs));
         $validity = true;
 
         if ($sig !== true) {
