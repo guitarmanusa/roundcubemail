@@ -98,7 +98,7 @@ class enigma_engine
      */
     function load_smime_driver()
     {
-        error_log("HERE??");
+        //error_log("HERE??");
         if ($this->smime_driver) {
             return;
         }
@@ -568,7 +568,35 @@ class enigma_engine
             return;
         }
 
-        // @TODO
+        if ($this->rc->action != 'show' && $this->rc->action != 'preview' && $this->rc->action != 'print') {
+            return;
+        }
+
+        $this->load_smime_driver();
+        $struct = $p['structure'];
+
+        $msg_part = $struct->parts[0];
+        $sig_part = $struct->parts[1];
+
+        // Get message body
+        if ($body === null) {
+            $storage = $this->rc->get_storage();
+            $body    = $storage->get_raw_headers($p['object']->uid);
+            $body   .= $storage->get_raw_body($p['object']->uid);
+        }
+
+        // openssl_pkcs7_verify must read in from a file, can't pass string
+        file_put_contents("body.txt", print_r($body,true));
+
+        // Verify
+        $sig = $this->smime_driver->verify("body.txt");
+
+        // cleanup file
+        @unlink("body.txt");
+
+        // Store signature data for display
+        $this->signatures[$struct->mime_id] = $sig;
+        $this->signatures[$msg_part->mime_id] = $sig;
     }
 
     /**

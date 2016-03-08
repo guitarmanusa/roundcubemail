@@ -93,26 +93,16 @@ class enigma_driver_phpssl extends enigma_driver
      *
      * @return mixed Signature information (enigma_signature) or enigma_error
      */
-    function verify($struct, $message)
+    function verify($text, $signature='')
     {
-        // use common temp dir
-        $temp_dir  = $this->rc->config->get('temp_dir');
-        $msg_file  = tempnam($temp_dir, 'rcmMsg');
-        $cert_file = tempnam($temp_dir, 'rcmCert');
-
-        $fh = fopen($msg_file, "w");
-        if ($struct->mime_id) {
-            $message->get_part_body($struct->mime_id, false, 0, $fh);
-        }
-        else {
-            $this->rc->storage->get_raw_body($message->uid, $fh);
-        }
-        fclose($fh);
-
         // @TODO: use stored certificates
+        // TODO: add user trusted CA's
+        touch("smime.crt");
+
+        $cert_file = "smime.crt";
 
         // try with certificate verification
-        $sig      = openssl_pkcs7_verify($msg_file, 0, $cert_file);
+        $sig      = openssl_pkcs7_verify($text, 0, $cert_file, array("/etc/ssl/certs"));
         $validity = true;
 
         if ($sig !== true) {
@@ -130,7 +120,6 @@ class enigma_driver_phpssl extends enigma_driver
         }
 
         // remove temp files
-        @unlink($msg_file);
         @unlink($cert_file);
 
         return $sig;
@@ -200,7 +189,7 @@ class enigma_driver_phpssl extends enigma_driver
                 //pull out identifiers, store to array
         }
         //return array
-        return results
+        return results;
     }
 
     public function get_key($keyid)

@@ -94,7 +94,6 @@ class enigma_ui
 
         // Preferences UI
         else if ($this->rc->action == 'plugin.enigmacerts') {
-            touch("here_$action.txt");
             switch ($action) {
                 case 'delete':
                     $this->cert_delete();
@@ -794,7 +793,6 @@ class enigma_ui
      */
     private function cert_list()
     {
-        touch("maybe.txt");
         $this->enigma->load_engine();
         $this->enigma->engine->load_smime_driver();
 
@@ -1372,7 +1370,6 @@ class enigma_ui
         }
 
         // Signature verification status
-        print_r($engine);
 
         if (($found = $this->find_part_id($part_id, $engine->signatures)) !== null
             && ($sig = $engine->signatures[$found])
