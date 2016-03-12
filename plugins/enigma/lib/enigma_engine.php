@@ -1034,10 +1034,10 @@ class enigma_engine
 
         return $result;
     }
-    function import_cert($content, $isfile=false)
+    function import_cert($content, $isfile=false, $password = '')
     {
         $this->load_smime_driver();
-        $result = $this->smime_driver->import($content, $isfile);
+        $result = $this->smime_driver->import($content, $isfile, $password);
 
         if ($result instanceof enigma_error) {
             rcube::raise_error(array(
@@ -1046,10 +1046,10 @@ class enigma_engine
                 'message' => "Enigma plugin: " . $result->getMessage()
                 ), true, false);
         }
-        else {
-            $result['imported'] = $result['public_imported'] + $result['private_imported'];
-            $result['unchanged'] = $result['public_unchanged'] + $result['private_unchanged'];
-        }
+        //else {
+        //    $result['imported'] = $result['public_imported'] + $result['private_imported'];
+        //    $result['unchanged'] = $result['public_unchanged'] + $result['private_unchanged'];
+        //}
 
         return $result;
     }

@@ -1067,8 +1067,9 @@ class enigma_ui
             $this->rc->output->send();
         }
         else if ($_FILES['_file']['tmp_name'] && is_uploaded_file($_FILES['_file']['tmp_name'])) {
+
             $this->enigma->load_engine();
-            $result = $this->enigma->engine->import_cert($_FILES['_file']['tmp_name'], true);
+            $result = $this->enigma->engine->import_cert($_FILES['_file']['tmp_name'], true, $_POST['password']);
 
             if (is_array($result)) {
                 // reload list if any keys has been added
@@ -1085,6 +1086,7 @@ class enigma_ui
                 $this->rc->output->send('iframe');
             }
             else {
+                //TODO tell the user the password was incorrect
                 $this->rc->output->show_message('enigma.certimportfailed', 'error');
             }
         }
@@ -1115,9 +1117,14 @@ class enigma_ui
         $upload = new html_inputfield(array('type' => 'file', 'name' => '_file',
             'id' => 'rcmimportfile', 'size' => 30));
 
+        $password = new html_inputfield(array('type' => 'password', 'name' => 'password',
+            'id' => 'password', 'size' => 50));
+
         $form = html::p(null,
             rcube::Q($this->enigma->gettext('certimporttext'), 'show')
             . html::br() . html::br() . $upload->show()
+            . html::br() . html::br() . "Password: (optional)" 
+            . html::br() . $password->show()
         );
 
         $this->rc->output->add_label('selectimportfile', 'importwait');

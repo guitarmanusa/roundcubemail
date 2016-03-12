@@ -65,14 +65,19 @@ class enigma_driver_phpssl extends enigma_driver
             return new enigma_error(enigma_error::INTERNAL,
                 "Unable to write to certificate directory: $homedir");
 
+        $ca_dir = $homedir . '/ca_certs';
+
+        if (!file_exists($ca_dir))
+            mkdir($ca_dir, 0700);
+        if (!file_exists($ca_dir))
+            return new enigma_error(enigma_error::INTERNAL,
+                "Unable to create CA directory: $ca_dir");
+        if (!is_writable($ca_dir))
+            return new enigma_error(enigma_error::INTERNAL,
+                "Unable to write to CA directory: $ca_dir");
+
         $this->homedir = $homedir;
         
-        //check if certchain.pem exists, if not create it
-        if (!file_exists($homedir."/certchain.pem")) {
-            touch($homedir."/certchain.pem");
-            chmod($homedir."/certchain.pem",0600);
-        }
-
     }
 
     function encrypt($text, $keys)
@@ -97,14 +102,11 @@ class enigma_driver_phpssl extends enigma_driver
      */
     function verify($text, $signature='')
     {
-        // @TODO: use stored certificates
-        // TODO: add user trusted CA's
-        touch($this->homedir . "/smime.crt");
-
+        //temporarily holds cert embedded in signature
         $cert_file = $this->homedir . "/smime.crt";
 
         // try with certificate verification
-        $sig      = openssl_pkcs7_verify($text, 0, $cert_file, array($trusted_CAs));
+        $sig      = openssl_pkcs7_verify($text, 0, $cert_file, array($trusted_CAs,$this->homedir.'/ca_certs'));
         $validity = true;
 
         if ($sig !== true) {
@@ -121,44 +123,118 @@ class enigma_driver_phpssl extends enigma_driver
             $sig = new enigma_error(enigma_error::INTERNAL, $errorstr);
         }
 
+        //store the cert if we don't have it yet
+        //TODO
+
         // remove temp files
         @unlink($cert_file);
 
         return $sig;
     }
 
-    public function import($content, $isfile=false, $password='')
+    public function import($cert_store, $isfile=false, $password='')
     {
-        $results = array();
+        //TODO should only be importing PKCS #12 store with user's Cert/PKey
+        //  stored in plugins/enigma/home/<username>/user.pem
+        //or additional trusted Root CA certificates
 
-        if ($isfile)
-            $content = file_get_contents($content);
+        $ca_dir = $this->homedir . '/ca_certs';
+
+        if ($isfile && !$cert_store = file_get_contents($cert_store))
+            return new enigma_error(enigma_error::INTERNAL,
+                "Error: Unable to read the cert file.");
  
-        $success = openssl_pkcs12_read($content, $results, $password);
+        if (openssl_pkcs12_read($cert_store, $cert_info, $password)) {
+            $results = array('imported' => 0, 'unchanged' => 0);
 
-        if ($success) {
-            $success = openssl_pkey_export($results['pkey'], $result, '');
+            //check that the private key in the p12 is the correct private key for the cert
+            if (!openssl_x509_check_private_key($cert_info['cert'], $cert_info['pkey'])) {
+                return new enigma_error(enigma_error::INTERNAL,
+                    "Private key <-> Certificate mismatch");
+            } else {
+                $pubcert = openssl_x509_parse($cert_info['cert']);
+                $can_sign = false;
+                $can_encrypt = false;
+    
+                //check that cert is for email address of user
+                if ($pubcert['subject']['emailAddress'] == $this->user) {
+                    //check that cert can be used for SMIME signing and encrypting
+                    foreach ($pubcert['purposes'] as $purpose) {
+                        if ($purpose[2] == "smimesign")
+                            $can_sign = true;
+                        if ($purpose[2] == "smimeencrypt")
+                            $can_encrypt = true;
+                    }
+                    if ($can_sign && $can_encrypt) {
+                        if (file_exists($this->homedir."/user.pem")) {
+                            $existing_cert = file_get_contents($this->homedir."/user.pem");
+                            $existing_cert = openssl_x509_parse($existing_cert);
+                            if($existing_cert['cert'] == $pubcert['cert']) {
+                                $results['unchanged'] += 2;
+                            }
+                        } else {
+                            file_put_contents($this->homedir."/user.pem", $cert_info['cert'].$cert_info['pkey']);
+                            $results['imported'] += 2;
+                        }
+                    } else {
+                        return new enigma_error(enigma_error::INTERNAL,
+                            "Certificate is not valid for SMIME signing and encrypting!");
+                    }
+                }
+            }
+
+            //only process Extracerts if there are any
+            if (is_array($cert_info['extracerts']) && !empty($cert_info['extracerts'])) { 
+                //name file as hash (just like c_rehash would do)
+                $conflicts = array();
+
+                foreach ($cert_info['extracerts'] as $extracert) {
+                    $repeat = false;
+                    //first file in directory with hash
+                    $extracert_parse = openssl_x509_parse($extracert);
+
+                    if (!file_exists($ca_dir . "/" . $extracert_parse['hash'])) {
+                        file_put_contents($ca_dir . "/" . $extracert_parse['hash'], $extracert);
+                    } else {
+                        $postfix = "";
+                        $cert_filename = $ca_dir . "/" . $extracert_parse['hash'] . $postfix;
+
+                        //jump to the largest HHHHHHHH.d (if known)
+                        if (in_array($conflicts[$extracert_parse['hash']]))
+                            $postfix = "." . $conflicts[$extracert_parse['hash']];
+                        $conflict = file_get_contents($ca_dir . "/" . $extracert_parse['hash'] . $postfix);
+
+                        while(file_exists($cert_filename)) {
+                            //compare x509 fingerprints (SHA1)
+                            if (openssl_x509_fingerprint($conflict) != openssl_x509_fingerprint($extracert)) {
+                                if (!in_array($conflicts[$extracert_parse['hash']]))
+                                    $conflicts[$extracert_parse['hash']] = 0;
+                                else
+                                    $conflicts[$extracert_parse['hash']] += 1;
+                                $cert_filename = $ca_dir . "/" . $extracert_parse['hash'] . "." . $conflicts[$extracert_parse['hash']];
+                            } else {
+                                $results['unchanged'] += 1;
+                                $repeat = true;
+                                break;
+                            }
+                        }
+                        //write file
+                        if(!$repeat) {
+                            file_put_contents($cert_filename,$extracert);
+                            $results['imported'] += 1;
+                        }
+                    }
+                }
+            }
+            return $results;
         } else {
-            //TODO
+            $error = "";
+            while ($msg = openssl_error_string())
+                $error .= $msg;
+            return new enigma_error(enigma_error::INTERNAL,
+                $error);
+                //"Unable to parse PKCS #12 certificate store: Incorrect password.");
         }
-        /* from verify_sig_cert, see if it is applicable here
-        if (empty($cert) || empty($cert['subject'])) {
-            $errorstr = $this->get_openssl_error();
-            return new enigma_error(enigma_error::INTERNAL, $errorstr);
-        }
-
-        $data = new enigma_signature();
-
-        $data->id          = $cert['hash']; //?
-        $data->valid       = $validity;
-        $data->fingerprint = $cert['serialNumber'];
-        $data->created     = $cert['validFrom_time_t'];
-        $data->expires     = $cert['validTo_time_t'];
-        $data->name        = $cert['subject']['CN'];
-//        $data->comment     = '';
-        $data->email       = $cert['subject']['emailAddress'];
-
-        */
     }
 
     public function export($key)
@@ -175,7 +251,7 @@ class enigma_driver_phpssl extends enigma_driver
     public function list_keys($pattern='')
     {
         //Open file
-        $certchain = file_get_contents($this->homedir."/certchain.pem", "r");
+        $certchain = file_get_contents($this->homedir."/user.pem", "r");
 
         if (!$certchain)
             //TODO return enigma error
