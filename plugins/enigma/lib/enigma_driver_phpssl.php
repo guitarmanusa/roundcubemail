@@ -125,7 +125,6 @@ class enigma_driver_phpssl extends enigma_driver
         $body = file_get_contents($text);
         preg_match("/^From: .*<(.*\@.*)>/m", $body, $email);
         $cert_file .= $email[1];
-        file_put_contents("emails.txt", $cert_file."\n".$this->trusted_CAs."\n".$this->homedir.'/ca_certs'."\n".print_r($email,true));
 
         // try with certificate verification
         $sig      = openssl_pkcs7_verify($text, 0, $cert_file, array($this->trusted_CAs,$this->homedir.'/ca_certs'));
