@@ -37,12 +37,15 @@ class enigma_driver_phpssl extends enigma_driver
      */
     function init()
     {
-        $homedir = $this->rc->config->get('enigma_smime_homedir', INSTALL_PATH . '/plugins/enigma/home');
-        $trusted_CAs = $this->rc->config->get('enigma_root_cas_location', "/etc/ssl/certs");
+        $homedir = $this->rc->config->get('enigma_smime_homedir', INSTALL_PATH . 'plugins/enigma/home');
+        $this->trusted_CAs = $this->rc->config->get('enigma_root_cas_location', "/etc/ssl/certs");
  
         if (!$homedir)
             return new enigma_error(enigma_error::INTERNAL,
                 "Option 'enigma_smime_homedir' not specified");
+        if (!$this->trusted_CAs)
+            return new enigma_error(enigma_error::INTERNAL,
+                "Option 'enigma_root_cas_location' not specified");
 
         // check if homedir exists (create it if not) and is readable
         if (!file_exists($homedir))
@@ -65,6 +68,7 @@ class enigma_driver_phpssl extends enigma_driver
             return new enigma_error(enigma_error::INTERNAL,
                 "Unable to write to certificate directory: $homedir");
 
+        //make directory for user trusted CA certificates
         $ca_dir = $homedir . '/ca_certs';
 
         if (!file_exists($ca_dir))
@@ -75,6 +79,19 @@ class enigma_driver_phpssl extends enigma_driver
         if (!is_writable($ca_dir))
             return new enigma_error(enigma_error::INTERNAL,
                 "Unable to write to CA directory: $ca_dir");
+
+        //make directory for certificates received via signed messages
+        //so that you can send encrypted emails later
+        $user_certs = $homedir . '/user_certs';
+
+        if (!file_exists($user_certs))
+            mkdir($user_certs, 0700);
+        if (!file_exists($user_certs))
+            return new enigma_error(enigma_error::INTERNAL,
+                "Unable to create directory for received certificates: $user_certs");
+        if (!is_writable($user_certs))
+            return new enigma_error(enigma_error::INTERNAL,
+                "Unable to write to directory for received certificates: $user_certs");
 
         $this->homedir = $homedir;
         
@@ -102,11 +119,16 @@ class enigma_driver_phpssl extends enigma_driver
      */
     function verify($text, $signature='')
     {
-        //temporarily holds cert embedded in signature
-        $cert_file = $this->homedir . "/smime.crt";
+        //store the cert if we don't have it yet
+        //save file as <email address> for easy lookup /From: .*<(.*\@.*)>/
+        $cert_file = $this->homedir . "/user_certs/";
+        $body = file_get_contents($text);
+        preg_match("/^From: .*<(.*\@.*)>/m", $body, $email);
+        $cert_file .= $email[1];
+        file_put_contents("emails.txt", $cert_file."\n".$this->trusted_CAs."\n".$this->homedir.'/ca_certs'."\n".print_r($email,true));
 
         // try with certificate verification
-        $sig      = openssl_pkcs7_verify($text, 0, $cert_file, array($trusted_CAs,$this->homedir.'/ca_certs'));
+        $sig      = openssl_pkcs7_verify($text, 0, $cert_file, array($this->trusted_CAs,$this->homedir.'/ca_certs'));
         $validity = true;
 
         if ($sig !== true) {
@@ -122,12 +144,6 @@ class enigma_driver_phpssl extends enigma_driver
             $errorstr = $this->get_openssl_error();
             $sig = new enigma_error(enigma_error::INTERNAL, $errorstr);
         }
-
-        //store the cert if we don't have it yet
-        //TODO
-
-        // remove temp files
-        @unlink($cert_file);
 
         return $sig;
     }
