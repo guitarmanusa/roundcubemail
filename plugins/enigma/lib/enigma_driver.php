@@ -47,7 +47,7 @@ abstract class enigma_driver
      * @param string Encrypted message
      * @param array  List of key-password mapping
      */
-    abstract function decrypt($text, $keys = array());
+    abstract function decrypt($text, $keys = array(), $out = '');
 
     /**
      * Signing.

@@ -101,8 +101,30 @@ class enigma_driver_phpssl extends enigma_driver
     {
     }
 
-    function decrypt($text, $keys = array())
+    /**
+     * Message decryption.
+     *
+     * @param string Filename
+     *
+    **/
+    function decrypt($infilename, $keys = array(), $outfilename = '')
     {
+        if(empty($keys) || is_null($keys)) {
+            if(file_exists($this->homedir."/user.pem")) {
+                $user_certs = file_get_contents($this->homedir."/user.pem");
+                $keys = explode("-----END CERTIFICATE-----", $user_certs);
+                $keys[0] .= "-----END CERTIFICATE-----\n";
+            } else {
+                return new enigma_error(enigma_error::INTERNAL, "No certificate for user found.");
+            }
+        }
+        $result = openssl_pkcs7_decrypt($infilename, $outfilename, $keys[0], $keys[1]);
+
+        if ($result === true) {
+            return true;
+        } else {
+            return new enigma_error(enigma_error::INTERNAL, "Failed to decrypt message.");
+        }
     }
 
     function sign($text, $key, $passwd, $mode = null)
@@ -112,7 +134,7 @@ class enigma_driver_phpssl extends enigma_driver
     /**
      * Signature verification.
      *
-     * @param string Full MIME Message body (including headers)
+     * @param string Filename of file containing full MIME Message body (including headers)
      * @param string Signature, if message is of type S/MIME and body doesn't contain it
      *
      * @return mixed Signature information (enigma_signature) or enigma_error
@@ -244,7 +266,6 @@ class enigma_driver_phpssl extends enigma_driver
                     }
                 }
             }
-            file_put_contents("results.txt", print_r($results,true));
             return $results;
         } else {
             $error = "";

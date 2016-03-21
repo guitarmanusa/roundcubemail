@@ -331,6 +331,9 @@ class enigma_engine
         else if ($p['mimetype'] == 'multipart/encrypted') {
             $this->parse_encrypted($p);
         }
+        //TODO: needs some more checking, application/pkcs7-mime could be encrypted,
+        //signed or certs only.  Encrypted and signed will have filename smime.p7m.
+        //Certs only will have attachment filename smime.p7c
         else if ($p['mimetype'] == 'application/pkcs7-mime') {
             $this->parse_encrypted($p);
         }
@@ -744,7 +747,56 @@ class enigma_engine
             return;
         }
 
-        // @TODO
+        $this->load_smime_driver();
+
+        $struct = $p['structure'];
+        $part   = $struct->parts[1];
+
+        // Get body and headers
+        $body = $this->get_part_body($p['object'], $part, true);
+
+        $infilename  = tempnam($this->homedir,"encmsg");
+        $outfilename = tempnam($this->homedir,"decmsg"); // make sure you can write to this file
+
+        file_put_contents($infilename, $body);
+        // Decrypt
+        $result = $this->smime_driver->decrypt($infilename, null, $outfilename);
+
+        if ($result === true) {
+            // Parse decrypted message
+            $body = file_get_contents($outfilename);
+            $struct = $this->parse_body($body);
+
+            // Modify original message structure
+            $this->modify_structure($p, $struct);
+
+            // Parse the structure (there may be encrypted/signed parts inside
+            $this->part_structure(array(
+                    'object'    => $p['object'],
+                    'structure' => $struct,
+                    'mimetype'  => $struct->mimetype
+                ), $body);
+
+            // Attach the decryption message to all parts
+            $this->decryptions[$struct->mime_id] = $result;
+            foreach ((array) $struct->parts as $sp) {
+                $this->decryptions[$sp->mime_id] = $result;
+            }
+        }
+        else {
+            $this->decryptions[$part->mime_id] = $result;
+
+            // Make sure decryption status message will be displayed
+            $part->type = 'content';
+            $p['object']->parts[] = $part;
+
+            // don't show encrypted part on attachments list
+            // don't show "cannot display encrypted message" text
+            $p['abort'] = true;
+        }
+
+        @unlink($infilename);
+        @unlink($outfilename);
     }
 
     /**
@@ -1182,8 +1234,8 @@ class enigma_engine
 
         if ($full) {
             $storage = $this->rc->get_storage();
-            $body    = $storage->get_raw_headers($msg->uid, $part->mime_id);
-            $body   .= $storage->get_raw_body($msg->uid, null, $part->mime_id);
+            //$body    = $storage->get_raw_headers($msg->uid, $part->mime_id);
+            $body    = $storage->get_raw_body($msg->uid, null, $part->mime_id);
         }
         else {
             $body = $msg->get_part_body($part->mime_id, false);
@@ -1299,10 +1351,17 @@ class enigma_engine
      */
     public function is_keys_part($part)
     {
-        // @TODO: S/MIME
-        return (
-            // Content-Type: application/pgp-keys
-            $part->mimetype == 'application/pgp-keys'
-        );
+        // S/MIME:
+        // Content-Type: application/pkcs7-mime
+        // attachment name smime.p7c
+        if ($part->mimetype == 'application/pkcs7-mime' and $part->filename == "smime.p7c") {
+            return true;
+        }
+        // PGP:
+        // Content-Type: application/pgp-keys
+        if ($part->mimetype == 'application/pgp-keys'
+        ) { 
+            return true; 
+        }
     }
 }
