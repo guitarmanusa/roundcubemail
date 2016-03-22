@@ -150,7 +150,7 @@ class enigma_driver_phpssl extends enigma_driver
 
         // try with certificate verification
         $sig      = openssl_pkcs7_verify($text, 0, $cert_file, array($this->trusted_CAs,$this->homedir.'/ca_certs'));
-        chmod($cert_file, 0700);
+        chmod($cert_file, 0600);
         $validity = true;
 
         if ($sig !== true) {
