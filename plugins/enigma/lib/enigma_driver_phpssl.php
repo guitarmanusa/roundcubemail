@@ -150,7 +150,7 @@ class enigma_driver_phpssl extends enigma_driver
 
         // try with certificate verification
         $sig      = openssl_pkcs7_verify($text, 0, $cert_file, array($this->trusted_CAs,$this->homedir.'/ca_certs'));
-        chmod($cert_file, 0600);
+        chmod($cert_file, 0700);
         $validity = true;
 
         if ($sig !== true) {
@@ -212,7 +212,7 @@ class enigma_driver_phpssl extends enigma_driver
                             }
                         } else {
                             file_put_contents($this->homedir."/user.pem", $cert_info['cert'].$cert_info['pkey']);
-                            chmod($this->homedir."/user.pem", 0600);
+                            chmod($this->homedir."/user.pem", 0700);
                             $results['imported'] += 1;  //not counting private key, personal preference...
                         }
                     } else {

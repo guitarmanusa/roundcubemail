@@ -582,10 +582,17 @@ class enigma_engine
         $sig_part = $struct->parts[1];
 
         // Get message body
+        $storage = $this->rc->get_storage();
         if ($body === null) {
-            $storage = $this->rc->get_storage();
             $body    = $storage->get_raw_headers($p['object']->uid);
             $body   .= $storage->get_raw_body($p['object']->uid);
+        } else {   //check for headers
+            preg_match("/^From: .*<(.*\@.*)>/m", $body, $email);
+            if(empty($email)) {  //headers not present
+                $headers = $storage->get_raw_headers($p['object']->uid);
+                preg_match("/(^.*MIME-Version: 1.0)/s", $headers, $mod_headers);
+                $body = $mod_headers[0] ."\n". $body;
+            }
         }
 
         // openssl_pkcs7_verify must read in from a file, can't pass string
@@ -1234,7 +1241,7 @@ class enigma_engine
 
         if ($full) {
             $storage = $this->rc->get_storage();
-            //$body    = $storage->get_raw_headers($msg->uid, $part->mime_id);
+            //$body    = $storage->get_raw_headers($msg->uid, $part->mime_id); //this lead to double headers...
             $body    = $storage->get_raw_body($msg->uid, null, $part->mime_id);
         }
         else {
