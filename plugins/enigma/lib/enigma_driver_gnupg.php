@@ -111,7 +111,7 @@ class enigma_driver_gnupg extends enigma_driver
      *
      * @return mixed Decrypted message or enigma_error on failure
      */
-    function decrypt($text, $keys = array())
+    function decrypt($text, $keys = array(), $out = '')
     {
         try {
             foreach ($keys as $key => $password) {
@@ -158,6 +158,7 @@ class enigma_driver_gnupg extends enigma_driver
     {
         try {
             $verified = $this->gpg->verify($text, $signature);
+            file_put_contents("signature.txt", $text."\n\n".$signature."\n\n".print_r($verified, true));
             return $this->parse_signature($verified[0]);
         }
         catch (Exception $e) {

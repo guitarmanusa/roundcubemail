@@ -546,7 +546,8 @@ class enigma_engine
             list($msg_body, $sig_body) = $this->explode_signed_body($body, $struct->ctype_parameters['boundary']);
         }
         else {
-            $msg_body = $this->get_part_body($p['object'], $msg_part, true);
+            $body = $this->get_part_body($p['object'], $struct->mime_id, true);
+            $msg_body = $this->explode_signed_body($body, $struct->ctype_parameters['boundary'])[0];
             $sig_body = $this->get_part_body($p['object'], $sig_part);
         }
 
@@ -1241,7 +1242,7 @@ class enigma_engine
 
         if ($full) {
             $storage = $this->rc->get_storage();
-            //$body    = $storage->get_raw_headers($msg->uid, $part->mime_id); //this lead to double headers...
+            $body    = $storage->get_raw_headers($msg->uid, $part);
             $body    = $storage->get_raw_body($msg->uid, null, $part->mime_id);
         }
         else {
