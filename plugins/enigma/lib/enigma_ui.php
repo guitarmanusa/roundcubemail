@@ -1021,7 +1021,7 @@ class enigma_ui
      */
     private function cert_export()
     {
-        $keys   = rcube_utils::get_input_value('_keys', rcube_utils::INPUT_GPC);
+        /*$keys   = rcube_utils::get_input_value('_keys', rcube_utils::INPUT_GPC);
         $engine = $this->enigma->load_engine();
         $list   = $keys == '*' ? $engine->list_keys() : explode(',', $keys);
 
@@ -1042,7 +1042,7 @@ class enigma_ui
             }
         }
 
-        exit;
+        exit;*/
     }
 
     /**
